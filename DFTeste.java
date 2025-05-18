@@ -7,8 +7,6 @@ import java.io.FileWriter;
 import java.text.DecimalFormat;
 import java.text.NumberFormat;
 import java.util.LinkedList;
-import java.util.List;
-import java.util.ArrayList;
 import java.util.Queue;
 import java.util.Scanner;
 import java.util.logging.Level;
@@ -34,19 +32,6 @@ public class DFTeste extends Thread {
         }
     }
     public void execute() {
-        final int numSets = 3;
-
-        // listas para guardar, para cada nodo, as taxas de cada set
-        List<Double>[] taxasPorSet = new ArrayList[10];
-        for (int i = 0; i < 10; i++) {
-            taxasPorSet[i] = new ArrayList<>();
-        }
-
-        // acumula, ao longo dos 3 runs, os totais para acurácia e contagem de erros
-        long[] totalTempoAtrasoAg = new long[10];
-        long[] totalTimeNanoAg     = new long[10];
-        long[] totalErrosAg        = new long[10];
-
         OutputStream os;
         BufferedWriter bw;
         OutputStreamWriter osw;
@@ -66,18 +51,6 @@ public class DFTeste extends Thread {
         long[] tempoFinal = new long[10];       // Ultimo heartbeat
         boolean[] primeiro = new boolean[10];   // Marca se e o primeiro heartbeat
 
-        // Roda 3 vezes (3 sets)
-        for (int run = 0; run < numSets; run++) {
-            // zera tudo antes de cada set
-            for (int i = 0; i < 10; i++) {
-                atrasos[i]      = 0;
-                tempoAtraso[i]  = 0;
-                tempoInicial[i] = 0;
-                tempoFinal[i]   = 0;
-                primeiro[i]     = true;
-                A[i].clear();
-            }
-
         for (int i = 0; i < 10; i++){
             primeiro[i] = true;
         }
@@ -86,6 +59,7 @@ public class DFTeste extends Thread {
         timeout = new long[10];
         tPrevious = new long[10];
 
+        NumberFormat f = new DecimalFormat("0.000000000000000");
         try {
             inputStream = new FileInputStream(trace);
             sc = new Scanner(inputStream, "UTF-8");
@@ -113,7 +87,6 @@ public class DFTeste extends Thread {
                     /// heartbeat chegou depois da estimativa
                     /// coloca como suspeito
                 } 
-
                 tempoFinal[id] = ts;
 
                 if (A[id].size() == this.sizeList) {
@@ -122,15 +95,7 @@ public class DFTeste extends Thread {
                 A[id].add(ts);
                 tPrevious[id] = ts; // último ts do id
                 lin++;
-            }
-            sc.close();
-            inputStream.close();
-        } catch (IOException | NumberFormatException ex) {
-                Logger.getLogger(DFTeste.class.getName())
-                      .log(Level.SEVERE, null, ex);
-        }
-
-            // eof
+            }// eof
 
             // METRICAS
 
@@ -153,42 +118,17 @@ public class DFTeste extends Thread {
             
             /// aqui fazer laço para os nodos e gravar dados em arquivo
 
-            for ( id = 0; id < 10; id++){
+            try (BufferedWriter writer = new BufferedWriter(new FileWriter("saida.log", true))) {
+                for ( id = 0; id < 10; id++){
                     if (tempoInicial[id] != 0) {
                         long tempoTotal = tempoFinal[id] - tempoInicial[id];
-                        double taxaErro = (double) atrasos[id] / (tempoTotal / 1000000000);
-                        taxasPorSet[id].add(taxaErro);
-                        totalTempoAtrasoAg[id] += tempoAtraso[id];
-                        totalTimeNanoAg[id] += tempoTotal;
-                        totalErrosAg[id] += atrasos[id];
-                    }
-                }
-            }
-
-            try (BufferedWriter writer = new BufferedWriter(new FileWriter("saida.log", true))) {
-                NumberFormat f = new DecimalFormat("0.000000000000000");
-                for ( id = 0; id < 10; id++){
-                    List<Double> L = taxasPorSet[id];
-                    if (!L.isEmpty()) {
-                        double soma = 0;
-                        for (double t : L)
-                            soma += t;
-                        double taxaMedia = soma / L.size();
-
-                        double pa = (double) totalTempoAtrasoAg[id] / totalTimeNanoAg[id];
+                        double taxaErro = (double) atrasos[id] / tempoTotal * 1000000000.0;
+                        double pa = (double) tempoAtraso[id] / tempoTotal;
                         double acuracia = 1 - pa;
 
-                        String linha = String.format(
-                            "%d;%d;%d;%d;%d;%d;%s;%s",
-                            id,
-                            this.sizeList,
-                            margin,
-                            totalErrosAg[id],
-                            totalTempoAtrasoAg[id],
-                            totalTimeNanoAg[id],
-                            f.format(taxaMedia),
-                            f.format(acuracia)
-                        );
+                        String linha = String.format("%d;%d;%d;%d;%d;%d;%.15f;%.15f",
+                            id, this.sizeList, margin, atrasos[id], tempoAtraso[id],
+                            tempoTotal, taxaErro, acuracia);
                         writer.write(linha);
                         writer.newLine();
                     }
@@ -197,7 +137,11 @@ public class DFTeste extends Thread {
                 e.printStackTrace();
             }
             
-        
+            sc.close();
+            inputStream.close();
+        } catch (IOException | NumberFormatException ex) {
+            Logger.getLogger(DFTeste.class.getName()).log(Level.SEVERE, null, ex);
+        }
     }
 
     public double computeEA(long heartbeat, int id) {
